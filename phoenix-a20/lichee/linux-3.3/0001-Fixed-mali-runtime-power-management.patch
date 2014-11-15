@@ -1,0 +1,56 @@
+From f4a21fab96d94e45e158789fac3f09cebb341e1c Mon Sep 17 00:00:00 2001
+From: "Zheng,Lei" <realthunder.dev@gmail.com>
+Date: Thu, 4 Dec 2014 19:35:52 -0800
+Subject: [PATCH 1/5] Fixed mali runtime power management
+
+---
+ drivers/base/power/runtime.c                       |    3 +++
+ .../src/devicedrv/mali/linux/mali_platform.c       |    7 +++++++
+ 2 files changed, 10 insertions(+)
+
+diff --git a/drivers/base/power/runtime.c b/drivers/base/power/runtime.c
+index 541f821..789e801 100644
+--- a/drivers/base/power/runtime.c
++++ b/drivers/base/power/runtime.c
+@@ -580,6 +580,9 @@ static int rpm_resume(struct device *dev, int rpmflags)
+  repeat:
+ 	if (dev->power.runtime_error)
+ 		retval = -EINVAL;
++    else if (dev->power.disable_depth == 1 && dev->power.is_suspended
++            && dev->power.runtime_status == RPM_ACTIVE)
++        retval = 1;
+ 	else if (dev->power.disable_depth > 0)
+ 		retval = -EACCES;
+ 	if (retval)
+diff --git a/modules/mali/DX910-SW-99002-r3p2-01rel0/driver/src/devicedrv/mali/linux/mali_platform.c b/modules/mali/DX910-SW-99002-r3p2-01rel0/driver/src/devicedrv/mali/linux/mali_platform.c
+index c2bd35a..3f0fb5b 100644
+--- a/modules/mali/DX910-SW-99002-r3p2-01rel0/driver/src/devicedrv/mali/linux/mali_platform.c
++++ b/modules/mali/DX910-SW-99002-r3p2-01rel0/driver/src/devicedrv/mali/linux/mali_platform.c
+@@ -17,6 +17,10 @@
+ #include <linux/mali/mali_utgard.h>
+ #include <linux/platform_device.h>
+ #include <linux/regulator/consumer.h>
++#include <linux/version.h>
++#ifdef CONFIG_PM_RUNTIME
++#include <linux/pm_runtime.h>
++#endif /* CONFIG_PM_RUNTIME */
+ 
+ #include <linux/err.h>
+ #include <linux/module.h>  
+@@ -303,10 +307,13 @@ int sun7i_mali_platform_device_register(void)
+                 if(_MALI_OSK_ERR_OK != mali_platform_init())return _MALI_OSK_ERR_FAULT;
+ #ifdef CONFIG_PM_RUNTIME
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37))
++                MALI_PRINT(("pm runtime enabled\n"));
+ 				pm_runtime_set_autosuspend_delay(&(mali_gpu_device.dev), 1000);
+ 				pm_runtime_use_autosuspend(&(mali_gpu_device.dev));
+ #endif
+ 				pm_runtime_enable(&(mali_gpu_device.dev));
++#else
++                MALI_PRINT(("no pm runtime\n"));
+ #endif
+                 MALI_PRINT(("sun7i_mali_platform_device_register() sucess!!\n"));
+ #ifdef CONFIG_GPU_DVFS
+-- 
+1.7.9.5
+

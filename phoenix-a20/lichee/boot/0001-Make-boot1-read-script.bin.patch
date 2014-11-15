@@ -1,0 +1,25 @@
+From 7c039e9b4e0bf3e290f0db7b423cbbeebb0d7f7f Mon Sep 17 00:00:00 2001
+From: "Zheng,Lei" <realthunder.dev@gmail.com>
+Date: Thu, 4 Dec 2014 19:49:54 -0800
+Subject: [PATCH] Make boot1 read script.bin
+
+---
+ boot1/include/egon2.h |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/boot1/include/egon2.h b/boot1/include/egon2.h
+index 58b0bf0..5e60259 100755
+--- a/boot1/include/egon2.h
++++ b/boot1/include/egon2.h
+@@ -25,7 +25,7 @@
+ 
+ //#define  CONFIG_AW_FPGA_PLATFORM
+ //#define   BOOT1_DEBUG
+-#define   SCRIPT_INSTALL_EARLY
++// #define   SCRIPT_INSTALL_EARLY
+ #define   SPEED_UP_BOOT
+ #define   CONFIG_LOAD_BOOTIMG
+ 
+-- 
+1.7.9.5
+

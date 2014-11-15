@@ -1,0 +1,296 @@
+From 3e4dd3d161d20e4e3e082f41481d86cc37604770 Mon Sep 17 00:00:00 2001
+From: "Zheng,Lei" <realthunder.dev@gmail.com>
+Date: Thu, 4 Dec 2014 19:58:05 -0800
+Subject: [PATCH 2/2] Changed default android system config
+
+* Enabled I2S, default to PCM slave mode for connecting to 3G phone
+* Set default camera to OV5640
+* Fixed USB OTG gpio setting (OTG still won't work, because of the wrong
+  type of plug)
+* Default to VGA 1024x768 (Android will revert to HDMI is connected on
+  power up)
+* Fixed SD card detect gpio setting
+* Enable 3G
+* Disable SATA (somehow its driver log spam the console)
+---
+ .../configs/android/sugar-standard/sys_config.fex  |  120 ++++++++++----------
+ 1 file changed, 63 insertions(+), 57 deletions(-)
+
+diff --git a/pack/chips/sun7i/configs/android/sugar-standard/sys_config.fex b/pack/chips/sun7i/configs/android/sugar-standard/sys_config.fex
+index bcadd6e..977cc61 100644
+--- a/pack/chips/sun7i/configs/android/sugar-standard/sys_config.fex
++++ b/pack/chips/sun7i/configs/android/sugar-standard/sys_config.fex
+@@ -390,10 +390,9 @@ good_block_ratio    = 0
+ ;-------------------------------------------------------------------------------
+ [disp_init]
+ disp_init_enable        = 1
+-disp_mode               = 4
+-
+-screen0_output_type     = 3
+-screen0_output_mode     = 5
++disp_mode               = 0
++screen0_output_type     = 4
++screen0_output_mode     = 4
+ 
+ screen1_output_type     = 1
+ screen1_output_mode     = 4
+@@ -634,10 +633,11 @@ lcdvsync                = port:PH27<2><0><default><default>
+ ;-------------------------------------------------------------------------------
+ [tv_out_dac_para]
+ dac_used                = 1
+-dac0_src                = 0
+-dac1_src                = 0
+-dac2_src                = 0
++dac0_src                = 4
++dac1_src                = 5
++dac2_src                = 6
+ dac3_src                = 0
++dac_buffer_enable        = port:PH22<1><1><default><default>
+ 
+ ;----------------------------------------------------------------------------------
+ ;hdmi configuration
+@@ -647,7 +647,7 @@ hdmi_used               = 1
+ 
+ 
+ [camera_list_para]
+-camera_list_para_used   = 0
++camera_list_para_used   = 1
+ ov7670                  = 0
+ gc0308                  = 1
+ gt2005                  = 0
+@@ -687,25 +687,25 @@ siv121d                 = 0
+ ;--------------------------------------------------------------------------------
+ 
+ [csi0_para]
+-csi_used            = 0
++csi_used            = 1
+ 
+ csi_dev_qty         = 1
+ csi_stby_mode       = 0
+-csi_mname           = "gc0308"
++csi_mname           = "ov5640"
+ csi_if              = 0
+-csi_iovdd           = ""
+-csi_avdd            = ""
++csi_iovdd           = "axp20_pll"
++csi_avdd            = "axp20_pll"
+ csi_dvdd            = ""
+-csi_vol_iovdd       = 
++csi_vol_iovdd       = 2800
+ csi_vol_dvdd        = 
+ csi_vol_avdd        = 
+ csi_vflip           = 0
+ csi_hflip           = 0
+-csi_flash_pol       = 0
+-csi_facing          = 0
++csi_flash_pol       = 1
++csi_facing          = 1
+ 
+ csi_twi_id          = 1
+-csi_twi_addr        = 0x42
++csi_twi_addr        = 0x78
+ csi_pck             = port:PE00<3><default><default><default>
+ csi_ck              = port:PE01<3><default><default><default>
+ csi_hsync           = port:PE02<3><default><default><default>
+@@ -718,9 +718,9 @@ csi_d4              = port:PE08<3><default><default><default>
+ csi_d5              = port:PE09<3><default><default><default>
+ csi_d6              = port:PE10<3><default><default><default>
+ csi_d7              = port:PE11<3><default><default><default>
+-csi_reset           = port:PH13<1><default><default><0>
++csi_reset           = port:PH14<1><default><default><0>
+ csi_power_en        = 
+-csi_stby            = port:PH16<1><default><default><0>
++csi_stby            = port:PH19<1><default><default><0>
+ 
+ [csi1_para]
+ csi_used            = 0
+@@ -776,7 +776,7 @@ tvin_channel_num    = 4
+ ;
+ ;-------------------------------------------------------------------------------
+ [sata_para]
+-sata_used           = 1
++sata_used           = 0
+ sata_power_en       =
+ 
+ 
+@@ -814,7 +814,7 @@ sdc_d0              = port:PF01<2><1><2><default>
+ sdc_d1              = port:PF00<2><1><2><default>
+ sdc_d2              = port:PF05<2><1><2><default>
+ sdc_d3              = port:PF04<2><1><2><default>
+-sdc_det             = port:PD04<0><1><default><default>
++sdc_det             = port:PH01<0><1><default><default>
+ sdc_use_wp          = 0
+ sdc_wp              =
+ sdc_isio            = 0
+@@ -957,11 +957,11 @@ kp_out7             = port:PH27<4><1><default><default>
+ ;-------------------------------------------------------------------------------
+ [usbc0]
+ usb_used            = 1
+-usb_port_type       = 2
++usb_port_type       = 0
+ usb_detect_type     = 1
+-usb_id_gpio         = port:PD03<0><1><default><default>
+-usb_det_vbus_gpio   = port:PD06<1><0><default><0>
+-usb_drv_vbus_gpio   = port:PD02<1><0><default><0>
++usb_id_gpio         = port:PH04<0><1><default><default>
++usb_det_vbus_gpio   = port:PH05<1><0><default><0>
++usb_drv_vbus_gpio   = port:PB09<1><0><default><0>
+ usb_restrict_gpio   = port:PH00<1><0><default><0>
+ usb_host_init_state = 0
+ usb_restric_flag    = 0
+@@ -1113,9 +1113,9 @@ ap6xxx_bt_host_wake  = port:PI15<0><default><default><0>
+ ;3G configuration
+ ;-------------------------------------------------------------------------------
+ [3g_para]
+-3g_used             = 0
+-3g_usbc_num         = 2
+-3g_uart_num         = 0
++3g_used             = 1
++3g_usbc_num         = 1
++3g_uart_num         = 2
+ 3g_pwr              =
+ 3g_wakeup           =
+ 3g_int              =
+@@ -1161,17 +1161,31 @@ bt_gpio             = port:PI21<1><default><default><default>
+ bt_rst              = port:PB05<1><default><default><default>
+ 
+ [i2s_para]
+-i2s_used            = 0
+-i2s_channel         = 2
+-i2s_mclk            = port:PB5<2><1><default><default>
+-i2s_bclk            = port:PB6<2><1><default><default>
+-i2s_lrclk           = port:PB7<2><1><default><default>
+-i2s_dout0           = port:PB8<2><1><default><default>
+-i2s_dout1           =
+-i2s_dout2           =
+-i2s_dout3           =
+-i2s_din             = port:PB12<2><1><default><default>
+-
++i2s_used = 1
++i2s_channel = 1
++i2s_master = 1
++i2s_select = 0
++audio_format = 4
++signal_inversion = 3
++over_sample_rate = 256
++sample_resolution = 16
++word_select_size = 32
++pcm_sync_period = 256
++msb_lsb_first = 0
++sign_extend = 0
++slot_index = 0
++slot_width = 16
++frame_width = 1
++tx_data_mode = 0
++rx_data_mode = 0
++i2s_mclk = 
++i2s_bclk = port:PB06<2><2><default><default>
++i2s_lrclk = port:PB07<2><2><default><default>
++i2s_dout0 = port:PB08<2><2><default><default>
++i2s_dout1 =
++i2s_dout2 =
++i2s_dout3 =
++i2s_din = port:PB12<2><2><default><default>
+ 
+ ;--------------------------------------------------------------------------------
+ ;pcm_master:1: SND_SOC_DAIFMT_CBM_CFM(codec clk & FRM master)        use
+@@ -1202,14 +1216,14 @@ i2s_din             = port:PB12<2><1><default><default>
+ ;--------------------------------------------------------------------------------
+ [pcm_para]
+ pcm_used            = 0
+-pcm_channel         = 2
+-pcm_master		= 4
++pcm_channel         = 1
++pcm_master		    = 1
+ pcm_select  		= 1
+ audio_format		= 4
+-signal_inversion	= 1
++signal_inversion	= 3
+ over_sample_rate	= 256
+ sample_resolution   = 16
+-word_select_size 	= 32
++word_select_size 	= 16
+ pcm_sync_period 	= 256
+ msb_lsb_first 	    = 0
+ sign_extend 		= 0
+@@ -1218,17 +1232,17 @@ slot_width 		    = 16
+ frame_width 		= 1
+ tx_data_mode 		= 0
+ rx_data_mode 		= 0
+-pcm_mclk            = port:PA09<6><1><default><default>
+-pcm_bclk            = port:PA14<6><1><default><default>
+-pcm_lrclk           = port:PA15<6><1><default><default>
+-pcm_dout0           = port:PA16<6><1><default><default>
++pcm_mclk            = 
++pcm_bclk            = port:PB06<2><1><default><default>
++pcm_lrclk           = port:PB07<2><1><default><default>
++pcm_dout0           = port:PB08<2><1><default><default>
+ pcm_dout1           =
+ pcm_dout2           =
+ pcm_dout3           =
+-pcm_din             = port:PA17<6><1><default><default>
++pcm_din             = port:PB12<2><1><default><default>
+ 
+ [spdif_para]
+-spdif_used          = 1
++spdif_used          = 0
+ spdif_mclk          =
+ spdif_dout          = port:PB13<4><1><default><default>
+ spdif_din           =
+@@ -1252,7 +1266,7 @@ ir_rx               = port:PB04<2><default><default><default>
+ ;----------------------------------------------------------------------------------
+ [gpio_para]                    
+ gpio_used                = 1
+-gpio_num                 = 1
++gpio_num                 = 2
+ gpio_pin_1               = port:PH17<1><default><default><1>
+ 
+ ;-------------------------------------------------------------------------------
+@@ -1323,7 +1337,6 @@ pmu_init_adc_freq        = 100
+ pmu_init_adc_freqc       = 100
+ pmu_init_chg_pretime     = 50
+ pmu_init_chg_csttime     = 720
+-
+ pmu_bat_para1            = 0
+ pmu_bat_para2            = 0
+ pmu_bat_para3            = 0
+@@ -1340,18 +1353,14 @@ pmu_bat_para13           = 71
+ pmu_bat_para14           = 83
+ pmu_bat_para15           = 92
+ pmu_bat_para16           = 100
+-
+ pmu_usbvol_limit         = 1
+ pmu_usbcur_limit         = 0
+ pmu_usbvol               = 4000
+ pmu_usbcur               = 0
+-
+ pmu_usbvol_pc            = 4400
+ pmu_usbcur_pc            = 0
+-
+ pmu_pwroff_vol           = 3300
+ pmu_pwron_vol            = 2900
+-
+ pmu_pekoff_time          = 6000
+ pmu_pekoff_en            = 1
+ pmu_peklong_time         = 1500
+@@ -1359,7 +1368,6 @@ pmu_pekon_time           = 1000
+ pmu_pwrok_time           = 64
+ pmu_pwrnoe_time          = 2000
+ pmu_intotp_en            = 1
+-
+ pmu_used2                = 0
+ pmu_adpdet               = port:PH02<0><default><default><default>
+ pmu_init_chgcur2         = 400
+@@ -1367,9 +1375,7 @@ pmu_earlysuspend_chgcur2 = 600
+ pmu_suspend_chgcur2      = 1200
+ pmu_resume_chgcur2       = 400
+ pmu_shutdown_chgcur2     = 1200
+-
+ pmu_suspendpwroff_vol    = 3500
+-
+ pmu_batdeten             = 1
+ 
+ [recovery_key]
+-- 
+1.7.9.5
+

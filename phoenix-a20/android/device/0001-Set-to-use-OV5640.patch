@@ -1,0 +1,98 @@
+From b221ab6f029d491fe0f751b310c4a05f23835831 Mon Sep 17 00:00:00 2001
+From: "Zheng,Lei" <realthunder.dev@gmail.com>
+Date: Thu, 4 Dec 2014 19:16:52 -0800
+Subject: [PATCH 1/2] Set to use OV5640
+
+---
+ softwinner/sugar-standard/camera.cfg    |   18 +++++++++---------
+ softwinner/sugar-standard/init.sun7i.rc |    5 ++++-
+ 2 files changed, 13 insertions(+), 10 deletions(-)
+
+diff --git a/softwinner/sugar-standard/camera.cfg b/softwinner/sugar-standard/camera.cfg
+index 980c051..4388144 100755
+--- a/softwinner/sugar-standard/camera.cfg
++++ b/softwinner/sugar-standard/camera.cfg
+@@ -43,18 +43,18 @@ camera_device = /dev/video0
+ device_id = 0
+ 
+ used_preview_size = 1
+-key_support_preview_size = 640x480
+-key_default_preview_size = 640x480
++key_support_preview_size = 1280x720,640x480
++key_default_preview_size = 1280x720
+ 
+ used_picture_size = 1
+-key_support_picture_size = 640x480
+-key_default_picture_size = 640x480
++key_support_picture_size = 2592x1936,1600x1200,1280x1024
++key_default_picture_size = 2592x1936
+ 
+ used_flash_mode = 0
+ key_support_flash_mode = on,off,auto
+ key_default_flash_mode = on
+ 
+-used_color_effect=0
++used_color_effect=1
+ key_support_color_effect = none,mono,negative,sepia,aqua
+ key_default_color_effect = none
+ 
+@@ -62,7 +62,7 @@ used_frame_rate = 1
+ key_support_frame_rate = 25
+ key_default_frame_rate = 25
+ 
+-used_focus_mode = 0
++used_focus_mode = 1
+ key_support_focus_mode = auto,infinity,macro,fixed
+ key_default_focus_mode = auto
+ 
+@@ -70,11 +70,11 @@ used_scene_mode = 0
+ key_support_scene_mode = auto,auto,portrait,landscape,night,night-portrait,theatre,beach,snow,sunset,steadyphoto,fireworks,sports,party,candlelight,barcode
+ key_default_scene_mode = auto
+ 
+-used_white_balance = 0
++used_white_balance = 1
+ key_support_white_balance = auto,incandescent,fluorescent,warm-fluorescent,daylight,cloudy-daylight
+ key_default_white_balance = auto
+ 
+-used_exposure_compensation = 0
++used_exposure_compensation = 1
+ key_max_exposure_compensation = 3
+ key_min_exposure_compensation = -3
+ key_step_exposure_compensation = 1
+@@ -86,4 +86,4 @@ key_zoom_supported = true
+ key_smooth_zoom_supported = false
+ key_zoom_ratios = 100,120,150,200,230,250,300
+ key_max_zoom = 30
+-key_default_zoom = 0
+\ No newline at end of file
++key_default_zoom = 0
+diff --git a/softwinner/sugar-standard/init.sun7i.rc b/softwinner/sugar-standard/init.sun7i.rc
+index 4e8edb7..f753957 100755
+--- a/softwinner/sugar-standard/init.sun7i.rc
++++ b/softwinner/sugar-standard/init.sun7i.rc
+@@ -12,7 +12,7 @@ on early-init
+ 	mkdir /mnt/usbhost2 0000 system system
+ 	mkdir /mnt/sata 0000 system system
+ 	mkdir /databk 0700 root  system
+-	
++
+ on early-fs
+ 	dispe2fsck
+ 	mount ext4 /dev/block/system /system wait noatime nodev barrier=1
+@@ -74,10 +74,13 @@ on boot
+ #csi module
+ 	insmod /system/vendor/modules/videobuf-core.ko
+ 	insmod /system/vendor/modules/videobuf-dma-contig.ko
++	insmod /system/vendor/modules/camera.ko
++	insmod /system/vendor/modules/ov5640.ko
+ 	insmod /system/vendor/modules/sunxi_csi0.ko
+ 	insmod /system/vendor/modules/uvcvideo.ko
+ 
+ #network module
++    insmod /system/vendor/modules/usbnet.ko
+ 	insmod /system/vendor/modules/asix.ko bsize=0
+ 	insmod /system/vendor/modules/qf9700.ko
+ 	insmod /system/vendor/modules/mcs7830.ko
+-- 
+1.7.9.5
+

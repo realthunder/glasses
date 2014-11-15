@@ -1,0 +1,52 @@
+From 1b00affdb62fde8cda2f0001f3e36ae93d0a40e0 Mon Sep 17 00:00:00 2001
+From: "Zheng,Lei" <realthunder.dev@gmail.com>
+Date: Thu, 4 Dec 2014 19:44:04 -0800
+Subject: [PATCH 4/5] Fixed VGA 1024x768 timing deviation
+
+---
+ drivers/video/sun7i/disp/de_bsp/de/disp_clk.c |   29 ++++++++++++++++++++++++-
+ 1 file changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/video/sun7i/disp/de_bsp/de/disp_clk.c b/drivers/video/sun7i/disp/de_bsp/de/disp_clk.c
+index 272b53f..7485476 100755
+--- a/drivers/video/sun7i/disp/de_bsp/de/disp_clk.c
++++ b/drivers/video/sun7i/disp/de_bsp/de/disp_clk.c
+@@ -115,7 +115,34 @@ __disp_clk_tab clk_tab = //record tv/vga/hdmi mode clock requirement
+ 	{106800000    , 1      ,   106800000, 		267000000   ,   1   },   //    DISP_VGA_H1440_V900                  // 0X1
+ 	{ 86000000    , 1      ,	86000000,  		258000000   ,   0   },   //    DISP_VGA_H1360_V768                  // 0X2
+ 	{108000000    , 1      ,   108000000, 		270000000   ,   1   },   //    DISP_VGA_H1280_V1024                // 0X3
+-	{ 65250000    , 1      ,	65250000,  		261000000   ,   0   },   //    DISP_VGA_H1024_V768                  // 0X4
++
++    // The VGA standard demands 65MHz pixel clock for 1024x760x60Hz.  Most
++    // display can handle some deviation. My display uses TW8816 chip with some
++    // ticks to strech the whole screen to two LCD panel for 3D display. The
++    // chip has no frame buffer, and thus requires precise timing signal.
++    //
++    // The pixel clock is derived (as parent clock) from either pll0_video
++    // (sys_pll3), or pll1_video (sys_pll7), or sata_pll (fixed 1.2GHz).
++    // According to the source code here, the display system prefers to use
++    // pll1_video. According to datasheet, both pll0_video and pll1_video has a
++    // range from 27MHz to 381MHz. But for some reason, disp_pll_assign function
++    // says pll1_video can only be set at 250MHz~300MHz. The pll can only be
++    // adjusted in integer steps of 3MHz. The tve_freq (i.e. the pixel clock) is
++    // obtained by dividing the parent clock with an integer. So, within the
++    // range, we can only set pll1_video to 261MHz, resulting tve_freq = 261/4 =
++    // 65.25MHz as shown in the original code.
++    //
++    // To get an exact 65MHz pixel clock, I changed pll_freq required here to be
++    // 65x3=195MHz, causing disp_pll_assign to select pll0_video. It works fine
++    // with only VGA display enabled. Don't know what will happen for
++    // multi-display. 
++    //
++    // Another solution is of course to modify the firmware on the TW8816 driver
++    // board.
++    //
++	// { 65250000    , 1      ,	65250000,  		261000000   ,   0   },   //    DISP_VGA_H1024_V768                  // 0X4
++	{ 65000000    , 1      ,	65000000,  		195000000   ,   0   },   //    DISP_VGA_H1024_V768                  // 0X4
++
+ 	{ 39857143    , 1      ,	39857143,  		279000000 	,   0   },   //    DISP_VGA_H800_V600                   // 0X5
+ 	{ 25090909    , 1      ,	25090909,  		276000000 	,   0   },   //    DISP_VGA_H640_V480                   // 0X6
+ 	{        0    , 1      ,	       0,  		        0   ,   0   },   //    DISP_VGA_H1440_V900_RB           // 0X7
+-- 
+1.7.9.5
+

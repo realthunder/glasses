@@ -1,0 +1,536 @@
+From 17b5f72793955b3ed80b7a6943cf1f77f1976da0 Mon Sep 17 00:00:00 2001
+From: "Zheng,Lei" <realthunder.dev@gmail.com>
+Date: Thu, 4 Dec 2014 19:47:13 -0800
+Subject: [PATCH 5/5] Fixed i2s driver pcm slave mode
+
+---
+ sound/soc/sun7i/i2s/sun7i-i2s.c    |  230 ++++++++++++++++++++++++------------
+ sound/soc/sun7i/i2s/sun7i-i2sdma.c |   15 ++-
+ sound/soc/sun7i/i2s/sun7i-sndi2s.c |   26 +++-
+ 3 files changed, 188 insertions(+), 83 deletions(-)
+
+diff --git a/sound/soc/sun7i/i2s/sun7i-i2s.c b/sound/soc/sun7i/i2s/sun7i-i2s.c
+index 3edaade..155d60b 100755
+--- a/sound/soc/sun7i/i2s/sun7i-i2s.c
++++ b/sound/soc/sun7i/i2s/sun7i-i2s.c
+@@ -36,17 +36,37 @@
+ #include "sun7i-i2s.h"
+ 
+ #undef I2S_DBG
+-#if (0)
+-    #define I2S_DBG(format,args...)  printk("[SWITCH] "format,##args)    
++#if 0
++    #define I2S_DBG(format,args...)  printk("ALSA[I2S] %s(%d) "format,__func__,__LINE__,##args)    
+ #else
+-    #define I2S_DBG(...)    
++    #define I2S_DBG(...) do{}while(0)
+ #endif
+ 
++#define I2S_DUMP(_name) do{\
++        u32 v = readl(sun7i_iis.regs + SUN7I_##_name);\
++	    I2S_DBG(#_name " = %08x\n", v);\
++    }while(0)
++
++#define I2S_DUMP_ALL do{ \
++        I2S_DUMP(IISCTL);\
++        I2S_DUMP(IISFAT0);\
++        I2S_DUMP(IISFAT1);\
++        I2S_DUMP(IISFCTL);\
++        I2S_DUMP(IISINT);\
++        I2S_DUMP(IISCLKD);\
++        I2S_DUMP(TXCHSEL);\
++        I2S_DUMP(TXCHMAP);\
++        I2S_DUMP(RXCHSEL);\
++        I2S_DUMP(RXCHMAP);\
++        I2S_DUMP(IISINT);\
++    }while(0)
++
+ struct sun7i_i2s_info sun7i_iis;
+ 
+ static int regsave[8];
+ static int i2s_used 			= 0;
+ static int i2s_select 			= 0;
++static int i2s_slave 			= 0;
+ static int over_sample_rate 	= 0;
+ static int sample_resolution 	= 0;
+ static int word_select_size 	= 0;
+@@ -58,6 +78,9 @@ static int slot_width 			= 0;
+ static int frame_width 			= 0;
+ static int tx_data_mode 		= 0;
+ static int rx_data_mode 		= 0;
++static int i2s_master 		= 0;
++static int audio_format 	= 0;
++static int signal_inversion = 0;
+ 
+ static struct clk *i2s_apbclk 		= NULL;
+ static struct clk *i2s_pll2clk 		= NULL;
+@@ -154,6 +177,11 @@ void sun7i_snd_txctrl_i2s(struct snd_pcm_substream *substream, int on)
+ 		reg_val &= ~SUN7I_IISINT_TXDRQEN;
+ 		writel(reg_val, sun7i_iis.regs + SUN7I_IISINT);
+ 	}		
++    I2S_DUMP(IISCTL);
++    I2S_DUMP(IISINT);
++    I2S_DUMP(IISFCTL);
++    I2S_DUMP(TXCHSEL);
++    I2S_DUMP(TXCHMAP);
+ }
+ 
+ void sun7i_snd_rxctrl_i2s(struct snd_pcm_substream *substream, int on)
+@@ -208,6 +236,11 @@ void sun7i_snd_rxctrl_i2s(struct snd_pcm_substream *substream, int on)
+ 				
+ 		//Global disable Digital Audio Interface
+ 	}		
++    I2S_DUMP(IISCTL);
++    I2S_DUMP(IISINT);
++    I2S_DUMP(IISFCTL);
++    I2S_DUMP(RXCHSEL);
++    I2S_DUMP(RXCHMAP);
+ }
+ 
+ static int sun7i_i2s_set_fmt(struct snd_soc_dai *cpu_dai, unsigned int fmt)
+@@ -225,9 +258,14 @@ static int sun7i_i2s_set_fmt(struct snd_soc_dai *cpu_dai, unsigned int fmt)
+ 	switch(fmt & SND_SOC_DAIFMT_MASTER_MASK){
+ 		case SND_SOC_DAIFMT_CBM_CFM:   /* codec clk & frm master */
+ 			reg_val |= SUN7I_IISCTL_MS;
++            i2s_slave = 1;
++            reg_val1 = readl(sun7i_iis.regs + SUN7I_IISCLKD);
++            reg_val1 &= ~(1<<7);
++            writel(reg_val1, sun7i_iis.regs + SUN7I_IISCLKD);
+ 			break;
+ 		case SND_SOC_DAIFMT_CBS_CFS:   /* codec clk & frm slave */
+ 			reg_val &= ~SUN7I_IISCTL_MS;
++            i2s_slave = 0;
+ 			break;
+ 		default:
+ 			return -EINVAL;
+@@ -286,12 +324,71 @@ static int sun7i_i2s_set_fmt(struct snd_soc_dai *cpu_dai, unsigned int fmt)
+ 			break;
+ 	}
+ 	writel(reg_val1, sun7i_iis.regs + SUN7I_IISFAT0);
++
++	reg_val = readl(sun7i_iis.regs + SUN7I_IISFAT0);
++	sun7i_iis.ws_size = word_select_size;
++	reg_val &= ~SUN7I_IISFAT0_WSS_32BCLK;
++	if(sun7i_iis.ws_size == 16)
++		reg_val |= SUN7I_IISFAT0_WSS_16BCLK;
++	else if(sun7i_iis.ws_size == 20) 
++		reg_val |= SUN7I_IISFAT0_WSS_20BCLK;
++	else if(sun7i_iis.ws_size == 24)
++		reg_val |= SUN7I_IISFAT0_WSS_24BCLK;
++	else
++		reg_val |= SUN7I_IISFAT0_WSS_32BCLK;
++	sun7i_iis.samp_res = sample_resolution;
++	reg_val &= ~SUN7I_IISFAT0_SR_RVD;
++	if(sun7i_iis.samp_res == 16)
++		reg_val |= SUN7I_IISFAT0_SR_16BIT;
++	else if(sun7i_iis.samp_res == 20) 
++		reg_val |= SUN7I_IISFAT0_SR_20BIT;
++	else
++		reg_val |= SUN7I_IISFAT0_SR_24BIT;
++	writel(reg_val, sun7i_iis.regs + SUN7I_IISFAT0);
++	sun7i_iis.pcm_txtype = tx_data_mode;
++	sun7i_iis.pcm_rxtype = rx_data_mode;
++	reg_val = sun7i_iis.pcm_txtype&0x3;
++	reg_val |= sun7i_iis.pcm_rxtype<<2;
++	sun7i_iis.pcm_sync_type = frame_width;
++	if(sun7i_iis.pcm_sync_type)
++		reg_val |= SUN7I_IISFAT1_SSYNC;	
++	sun7i_iis.pcm_sw = slot_width;
++	if(sun7i_iis.pcm_sw == 16)
++		reg_val |= SUN7I_IISFAT1_SW;
++	sun7i_iis.pcm_start_slot = slot_index;
++	reg_val |=(sun7i_iis.pcm_start_slot & 0x3)<<6;
++	sun7i_iis.pcm_lsb_first = msb_lsb_first;
++	reg_val |= sun7i_iis.pcm_lsb_first<<9;			
++	sun7i_iis.pcm_sync_period = pcm_sync_period;
++	if(sun7i_iis.pcm_sync_period == 256)
++		reg_val |= 0x4<<12;
++	else if (sun7i_iis.pcm_sync_period == 128)
++		reg_val |= 0x3<<12;
++	else if (sun7i_iis.pcm_sync_period == 64)
++		reg_val |= 0x2<<12;
++	else if (sun7i_iis.pcm_sync_period == 32)
++		reg_val |= 0x1<<12;
++	writel(reg_val, sun7i_iis.regs + SUN7I_IISFAT1);
++I2S_DBG("%s, line:%d, slot_index:%d\n", __func__, __LINE__, slot_index);
++I2S_DBG("%s, line:%d, slot_width:%d\n", __func__, __LINE__, slot_width);
++I2S_DBG("%s, line:%d, i2s_select:%d\n", __func__, __LINE__, i2s_select);
++I2S_DBG("%s, line:%d, frame_width:%d\n", __func__, __LINE__, frame_width);
++I2S_DBG("%s, line:%d, sign_extend:%d\n", __func__, __LINE__, sign_extend);
++I2S_DBG("%s, line:%d, tx_data_mode:%d\n", __func__, __LINE__, tx_data_mode);
++I2S_DBG("%s, line:%d, rx_data_mode:%d\n", __func__, __LINE__, rx_data_mode);
++I2S_DBG("%s, line:%d, msb_lsb_first:%d\n", __func__, __LINE__, msb_lsb_first);
++I2S_DBG("%s, line:%d, pcm_sync_period:%d\n", __func__, __LINE__, pcm_sync_period);
++I2S_DBG("%s, line:%d, word_select_size:%d\n", __func__, __LINE__, word_select_size);
++I2S_DBG("%s, line:%d, over_sample_rate:%d\n", __func__, __LINE__, over_sample_rate);
++I2S_DBG("%s, line:%d, sample_resolution:%d\n", __func__, __LINE__, sample_resolution);
++
+ 	/* set FIFO control register */
+ 	reg_val = 1 & 0x3;
+ 	reg_val |= (1 & 0x1)<<2;
+ 	reg_val |= SUN7I_IISFCTL_RXTL(0xf);				//RX FIFO trigger level
+ 	reg_val |= SUN7I_IISFCTL_TXTL(0x40);				//TX FIFO empty trigger level
+ 	writel(reg_val, sun7i_iis.regs + SUN7I_IISFCTL);
++    I2S_DUMP_ALL;
+ 	return 0;
+ }
+ 
+@@ -302,7 +399,7 @@ static int sun7i_i2s_hw_params(struct snd_pcm_substream *substream,
+ 	/*pr_info("sun7i-i2s::func:%s(line:%d)\n",__func__,__LINE__);*/
+ 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+ 	struct sun7i_dma_params *dma_data;
+-	
++
+ 	/* play or record */
+ 	if(substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+ 		dma_data = &sun7i_i2s_pcm_stereo_out;
+@@ -356,6 +453,7 @@ static int sun7i_i2s_trigger(struct snd_pcm_substream *substream,
+ 			break;
+ 	}
+ 
++    I2S_DUMP_ALL;
+ 	return ret;
+ }
+ 
+@@ -363,11 +461,17 @@ static int sun7i_i2s_trigger(struct snd_pcm_substream *substream,
+ static int sun7i_i2s_set_sysclk(struct snd_soc_dai *cpu_dai, int clk_id, 
+                                  unsigned int freq, int i2s_pcm_select)
+ {	/*pr_info("sun7i-i2s::func:%s(line:%d)\n",__func__,__LINE__);*/
+-	if (clk_set_rate(i2s_pll2clk, freq)) {
+-		printk("try to set the i2s_pll2clk failed!\n");
+-	}
++	// if (clk_set_rate(i2s_pll2clk, freq)) {
++		// printk("try to set the i2s_pll2clk failed!\n");
++	// }
+ 	i2s_select = i2s_pcm_select;
+ 
++	if (!freq) {
++		clk_set_rate(i2s_pll2clk, 24576000);
++	} else {
++		clk_set_rate(i2s_pll2clk, 22579200);
++	}
++
+ 	return 0;
+ }
+ 
+@@ -568,66 +672,17 @@ static int sun7i_i2s_set_clkdiv(struct snd_soc_dai *cpu_dai, int div_id, int sam
+ 	}
+ 	bclk_div &= 0x7;
+ 	
+-	reg_val = mclk_div;
+-	reg_val |= (bclk_div<<4);
+-	reg_val |= (0x1<<7);
+-	writel(reg_val, sun7i_iis.regs + SUN7I_IISCLKD);
+-	reg_val = readl(sun7i_iis.regs + SUN7I_IISFAT0);
+-	sun7i_iis.ws_size = word_select_size;
+-	reg_val &= ~SUN7I_IISFAT0_WSS_32BCLK;
+-	if(sun7i_iis.ws_size == 16)
+-		reg_val |= SUN7I_IISFAT0_WSS_16BCLK;
+-	else if(sun7i_iis.ws_size == 20) 
+-		reg_val |= SUN7I_IISFAT0_WSS_20BCLK;
+-	else if(sun7i_iis.ws_size == 24)
+-		reg_val |= SUN7I_IISFAT0_WSS_24BCLK;
+-	else
+-		reg_val |= SUN7I_IISFAT0_WSS_32BCLK;
+-	sun7i_iis.samp_res = sample_resolution;
+-	reg_val &= ~SUN7I_IISFAT0_SR_RVD;
+-	if(sun7i_iis.samp_res == 16)
+-		reg_val |= SUN7I_IISFAT0_SR_16BIT;
+-	else if(sun7i_iis.samp_res == 20) 
+-		reg_val |= SUN7I_IISFAT0_SR_20BIT;
+-	else
+-		reg_val |= SUN7I_IISFAT0_SR_24BIT;
+-	writel(reg_val, sun7i_iis.regs + SUN7I_IISFAT0);
+-	sun7i_iis.pcm_txtype = tx_data_mode;
+-	sun7i_iis.pcm_rxtype = rx_data_mode;
+-	reg_val = sun7i_iis.pcm_txtype&0x3;
+-	reg_val |= sun7i_iis.pcm_rxtype<<2;
+-	sun7i_iis.pcm_sync_type = frame_width;
+-	if(sun7i_iis.pcm_sync_type)
+-		reg_val |= SUN7I_IISFAT1_SSYNC;	
+-	sun7i_iis.pcm_sw = slot_width;
+-	if(sun7i_iis.pcm_sw == 16)
+-		reg_val |= SUN7I_IISFAT1_SW;
+-	sun7i_iis.pcm_start_slot = slot_index;
+-	reg_val |=(sun7i_iis.pcm_start_slot & 0x3)<<6;
+-	sun7i_iis.pcm_lsb_first = msb_lsb_first;
+-	reg_val |= sun7i_iis.pcm_lsb_first<<9;			
+-	sun7i_iis.pcm_sync_period = pcm_sync_period;
+-	if(sun7i_iis.pcm_sync_period == 256)
+-		reg_val |= 0x4<<12;
+-	else if (sun7i_iis.pcm_sync_period == 128)
+-		reg_val |= 0x3<<12;
+-	else if (sun7i_iis.pcm_sync_period == 64)
+-		reg_val |= 0x2<<12;
+-	else if (sun7i_iis.pcm_sync_period == 32)
+-		reg_val |= 0x1<<12;
+-	writel(reg_val, sun7i_iis.regs + SUN7I_IISFAT1);
+-I2S_DBG("%s, line:%d, slot_index:%d\n", __func__, __LINE__, slot_index);
+-I2S_DBG("%s, line:%d, slot_width:%d\n", __func__, __LINE__, slot_width);
+-I2S_DBG("%s, line:%d, i2s_select:%d\n", __func__, __LINE__, i2s_select);
+-I2S_DBG("%s, line:%d, frame_width:%d\n", __func__, __LINE__, frame_width);
+-I2S_DBG("%s, line:%d, sign_extend:%d\n", __func__, __LINE__, sign_extend);
+-I2S_DBG("%s, line:%d, tx_data_mode:%d\n", __func__, __LINE__, tx_data_mode);
+-I2S_DBG("%s, line:%d, rx_data_mode:%d\n", __func__, __LINE__, rx_data_mode);
+-I2S_DBG("%s, line:%d, msb_lsb_first:%d\n", __func__, __LINE__, msb_lsb_first);
+-I2S_DBG("%s, line:%d, pcm_sync_period:%d\n", __func__, __LINE__, pcm_sync_period);
+-I2S_DBG("%s, line:%d, word_select_size:%d\n", __func__, __LINE__, word_select_size);
+-I2S_DBG("%s, line:%d, over_sample_rate:%d\n", __func__, __LINE__, over_sample_rate);
+-I2S_DBG("%s, line:%d, sample_resolution:%d\n", __func__, __LINE__, sample_resolution);
++    if(i2s_slave) 
++        writel(0, sun7i_iis.regs + SUN7I_IISCLKD);
++    else {
++        reg_val = mclk_div;
++        reg_val |= (bclk_div<<4);
++        if(reg_val&0xf) 
++            reg_val |= (0x1<<7);
++        writel(reg_val, sun7i_iis.regs + SUN7I_IISCLKD);
++    }
++
++    I2S_DUMP_ALL;
+ 	return 0;
+ }
+ 
+@@ -692,6 +747,7 @@ static int sun7i_i2s_suspend(struct snd_soc_dai *cpu_dai)
+ 	/*printk("[IIS]SPECIAL CLK 0x01c20068 = %#x, line= %d\n", *(volatile int*)0xF1C20068, __LINE__);
+ 	printk("[IIS]SPECIAL CLK 0x01c200B8 = %#x, line = %d\n", *(volatile int*)0xF1C200B8, __LINE__);*/
+ 	
++    I2S_DUMP_ALL;
+ 	return 0;
+ }
+ static int sun7i_i2s_resume(struct snd_soc_dai *cpu_dai)
+@@ -719,6 +775,7 @@ static int sun7i_i2s_resume(struct snd_soc_dai *cpu_dai)
+ 	printk("[IIS]SPECIAL CLK 0x01c20068 = %#x, line= %d\n", *(volatile int*)0xF1C20068, __LINE__);
+ 	printk("[IIS]SPECIAL CLK 0x01c200B8 = %#x, line = %d\n", *(volatile int*)0xF1C200B8, __LINE__);
+ 	
++    I2S_DUMP_ALL;
+ 	return 0;
+ }
+ 
+@@ -810,9 +867,6 @@ static int __devinit sun7i_i2s_dev_probe(struct platform_device *pdev)
+ 		goto out1;
+ 	}
+ 	
+-	reg_val = readl(sun7i_iis.regs + SUN7I_IISCTL);
+-	reg_val |= SUN7I_IISCTL_GEN;
+-	writel(reg_val, sun7i_iis.regs + SUN7I_IISCTL);
+ 	type = script_get_item("i2s_para", "over_sample_rate", &val);
+ 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+         printk("[I2S] over_sample_rate type err!\n");
+@@ -869,6 +923,27 @@ static int __devinit sun7i_i2s_dev_probe(struct platform_device *pdev)
+         printk("[I2S] rx_data_mode type err!\n");
+     }
+ 	rx_data_mode = val.val;
++	type = script_get_item("i2s_para", "i2s_master", &val);
++	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
++        printk("[I2S] i2s_master type err!\n");
++    }
++	i2s_master = val.val;
++	type = script_get_item("i2s_para", "audio_format", &val);
++	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
++        printk("[I2S] audio_format type err!\n");
++    }
++	audio_format = val.val;
++	type = script_get_item("i2s_para", "signal_inversion", &val);
++	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
++        printk("[I2S] signal_inversion type err!\n");
++    }
++	signal_inversion = val.val;
++    sun7i_i2s_set_fmt(0, (audio_format | (signal_inversion<<8) | (i2s_master<<12)));
++
++	reg_val = readl(sun7i_iis.regs + SUN7I_IISCTL);
++	reg_val |= SUN7I_IISCTL_GEN;
++	writel(reg_val, sun7i_iis.regs + SUN7I_IISCTL);
++
+ 	ret = snd_soc_register_dai(&pdev->dev, &sun7i_iis_dai);	
+ 	if (ret) {
+ 		dev_err(&pdev->dev, "Failed to register DAI\n");
+@@ -881,6 +956,9 @@ static int __devinit sun7i_i2s_dev_probe(struct platform_device *pdev)
+ 	out1:
+ 		clk_disable(i2s_apbclk);
+ 	out:
++
++    I2S_DUMP_ALL;
++
+ 	return 0;
+ }
+ 
+@@ -967,14 +1045,14 @@ static int __init sun7i_i2s_init(void){
+ 		}
+ 		/* req gpio */
+ 		for (i = 0; i < cnt; i++) {
+-		if (0 != gpio_request(list[i].gpio.gpio, NULL)) {
+-			printk("[i2s] request some gpio fail\n");
+-			goto end;
+-			}
+-		}
++            if (0 != gpio_request(list[i].gpio.gpio, NULL)) {
++                printk("[i2s] request some gpio fail\n");
++                goto end;
++            }
++        }
+ 		/* config gpio list */
+ 		if (0 != sw_gpio_setall_range(&list[0].gpio, cnt)) {
+-		printk("sw_gpio_setall_range failed\n");
++            printk("sw_gpio_setall_range failed\n");
+ 		}
+ 
+ 		if((err = platform_device_register(&sun7i_i2s_device)) < 0)
+diff --git a/sound/soc/sun7i/i2s/sun7i-i2sdma.c b/sound/soc/sun7i/i2s/sun7i-i2sdma.c
+index 3a49059..c0f1642 100755
+--- a/sound/soc/sun7i/i2s/sun7i-i2sdma.c
++++ b/sound/soc/sun7i/i2s/sun7i-i2sdma.c
+@@ -32,6 +32,13 @@
+ #include "sun7i-i2s.h"
+ #include "sun7i-i2sdma.h"
+ 
++#undef I2S_DBG
++#if 0
++    #define I2S_DBG(format,args...)  printk("ALSA[I2S] %s(%d) "format,__func__,__LINE__,##args)    
++#else
++    #define I2S_DBG(...) do{}while(0)
++#endif
++
+ static volatile unsigned int capture_dmasrc = 0;
+ static volatile unsigned int capture_dmadst = 0;
+ static volatile unsigned int play_dmasrc = 0;
+@@ -163,7 +170,7 @@ static void sun7i_audio_capture_buffdone(dma_hdl_t dma_hdl, void *parg)
+ 	struct sun7i_capture_runtime_data *capture_prtd;
+ 	struct snd_pcm_substream *substream = parg;
+ 
+-	/*pr_info("CAPTUR:sun7i_i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);*/
++    I2S_DBG("\n");
+ 	capture_prtd = substream->runtime->private_data;
+ 		if (substream && capture_prtd) {
+ 			snd_pcm_period_elapsed(substream);
+@@ -181,7 +188,7 @@ static void sun7i_audio_play_buffdone(dma_hdl_t dma_hdl, void *parg)
+ {
+ 	struct sun7i_playback_runtime_data *play_prtd;
+ 	struct snd_pcm_substream *substream = parg;
+-	/*pr_info("sun7i_i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);*/
++    I2S_DBG("\n");
+ 	play_prtd = substream->runtime->private_data;
+ 	if ((substream) && (play_prtd)) {
+ 		snd_pcm_period_elapsed(substream);
+@@ -257,6 +264,8 @@ static int sun7i_pcm_hw_params(struct snd_pcm_substream *substream,
+     struct sun7i_dma_params *capture_dma = NULL;
+     unsigned long play_totbytes = 0, capture_totbytes = 0;
+ 
++    I2S_DBG("\n");
++
+     if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+ 		pr_info("play:sun7i_i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);
+ 		play_runtime = substream->runtime;
+@@ -266,6 +275,7 @@ static int sun7i_pcm_hw_params(struct snd_pcm_substream *substream,
+ 		play_dma = snd_soc_dai_get_dma_data(play_rtd->cpu_dai, substream);
+ 		
+ 		if (!play_dma) {
++            printk("ALAS:%s(%d) no dma\n",__func__,__LINE__);
+ 			return 0;
+ 		}
+ 
+@@ -314,6 +324,7 @@ static int sun7i_pcm_hw_params(struct snd_pcm_substream *substream,
+ 		capture_dma = snd_soc_dai_get_dma_data(capture_rtd->cpu_dai, substream);
+ 		
+ 		if (!capture_dma) {
++            printk("ALAS:%s(%d) no dma\n",__func__,__LINE__);
+ 			return 0;
+ 		}
+ 
+diff --git a/sound/soc/sun7i/i2s/sun7i-sndi2s.c b/sound/soc/sun7i/i2s/sun7i-sndi2s.c
+index 02aed32..7d3f1e7 100755
+--- a/sound/soc/sun7i/i2s/sun7i-sndi2s.c
++++ b/sound/soc/sun7i/i2s/sun7i-sndi2s.c
+@@ -27,10 +27,10 @@
+ #include "sun7i-i2s.h"
+ #include "sun7i-i2sdma.h"
+ #undef I2S_DBG
+-#if (1)
+-    #define I2S_DBG(format,args...)  printk("[SWITCH] "format,##args)    
++#if 0
++    #define I2S_DBG(format,args...)  printk("[I2S] %s(%d) "format,__func__,__LINE__,##args)    
+ #else
+-    #define I2S_DBG(...)    
++    #define I2S_DBG(...) do{}while(0)
+ #endif
+ 
+ static bool i2s_pcm_select 	= 1;
+@@ -59,6 +59,7 @@ static int sun7i_i2s_set_audio_mode(struct snd_kcontrol *kcontrol,
+ 		signal_inversion 	= 3;
+ 		i2s_master 			= 1;
+ 	}
++    I2S_DBG("set audio mode %d\n",i2s_pcm_select);
+ 	return 0;
+ }
+ 
+@@ -86,6 +87,8 @@ static int sun7i_sndi2s_hw_params(struct snd_pcm_substream *substream,
+ 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+ 	unsigned long sample_rate = params_rate(params);
+ 
++    printk("ALAS:%s(%d)\n",__func__,__LINE__);
++
+ 	switch (sample_rate) {
+ 		case 8000:
+ 		case 16000:
+@@ -102,23 +105,28 @@ static int sun7i_sndi2s_hw_params(struct snd_pcm_substream *substream,
+ 	}
+ 	ret = snd_soc_dai_set_sysclk(cpu_dai, 0 , freq, i2s_pcm_select);
+ 	if (ret < 0) {
++        I2S_DBG("failed\n");
+ 		return ret;
+ 	}
+ 
+ 	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_DSP_A |
+ 			SND_SOC_DAIFMT_IB_NF | SND_SOC_DAIFMT_CBM_CFM);
+-	if (ret < 0)
++	if (ret < 0) {
++        I2S_DBG("failed\n");
+ 		return ret;
++    }
+ 	/*
+ 	* codec clk & FRM master. AP as slave
+ 	*/
+ 	ret = snd_soc_dai_set_fmt(cpu_dai, (audio_format | (signal_inversion<<8) | (i2s_master<<12)));
+ 	if (ret < 0) {
++        I2S_DBG("failed\n");
+ 		return ret;
+ 	}
+ 		
+ 	ret = snd_soc_dai_set_clkdiv(cpu_dai, 0, sample_rate);
+ 	if (ret < 0) {
++        I2S_DBG("failed\n");
+ 		return ret;
+ 	}
+ 		
+@@ -145,7 +153,7 @@ static int sun7i_i2s_init(struct snd_soc_pcm_runtime *rtd)
+ 	struct snd_soc_codec *codec = rtd->codec;
+ 	struct snd_soc_card *card = rtd->card;
+ 	int ret;
+-		
++
+ 	/* Add virtual switch */
+ 	ret = snd_soc_add_controls(codec, sun7i_i2s_controls,
+ 					ARRAY_SIZE(sun7i_i2s_controls));
+@@ -186,11 +194,19 @@ static int __init sun7i_sndi2s_init(void)
+ 	int ret; 
+ 	static script_item_u   val;
+ 	script_item_value_type_e  type;
++
++    I2S_DBG("module init\n");
++
+ 	type=script_get_item("i2s_para", "i2s_used", &val);
+ 	if(SCIRPT_ITEM_VALUE_TYPE_INT != type){
+ 		pr_info("i2s_used  type err\n");
+ 	}
+     i2s_used=val.val;
++	type = script_get_item("i2s_para", "i2s_select", &val);
++	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
++        printk("[I2S] i2s_select type err!\n");
++    }
++	i2s_pcm_select = val.val;
+ 	type = script_get_item("i2s_para", "i2s_master", &val);
+ 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+         printk("[I2S] i2s_master type err!\n");
+-- 
+1.7.9.5
+

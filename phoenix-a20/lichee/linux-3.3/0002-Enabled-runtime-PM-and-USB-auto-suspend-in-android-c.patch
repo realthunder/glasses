@@ -1,0 +1,35 @@
+From e3e107d37e05d347494aa9fada01640cd4fa1662 Mon Sep 17 00:00:00 2001
+From: "Zheng,Lei" <realthunder.dev@gmail.com>
+Date: Thu, 4 Dec 2014 19:39:26 -0800
+Subject: [PATCH 2/5] Enabled runtime PM and USB auto suspend in android
+ config
+
+---
+ arch/arm/configs/sun7ismp_android_defconfig |    4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/configs/sun7ismp_android_defconfig b/arch/arm/configs/sun7ismp_android_defconfig
+index ae59129..5f3cf88 100755
+--- a/arch/arm/configs/sun7ismp_android_defconfig
++++ b/arch/arm/configs/sun7ismp_android_defconfig
+@@ -517,7 +517,7 @@ CONFIG_EARLYSUSPEND=y
+ CONFIG_FB_EARLYSUSPEND=y
+ CONFIG_PM_SLEEP=y
+ CONFIG_PM_SLEEP_SMP=y
+-# CONFIG_PM_RUNTIME is not set
++CONFIG_PM_RUNTIME=y
+ CONFIG_PM=y
+ CONFIG_PM_DEBUG=y
+ CONFIG_PM_ADVANCED_DEBUG=y
+@@ -2019,6 +2019,8 @@ CONFIG_USB=y
+ # CONFIG_USB_DEVICEFS is not set
+ CONFIG_USB_DEVICE_CLASS=y
+ # CONFIG_USB_DYNAMIC_MINORS is not set
++CONFIG_USB_SUSPEND=y
++# CONFIG_USB_OTG is not set
+ # CONFIG_USB_DWC3 is not set
+ # CONFIG_USB_MON is not set
+ # CONFIG_USB_WUSB_CBAF is not set
+-- 
+1.7.9.5
+
