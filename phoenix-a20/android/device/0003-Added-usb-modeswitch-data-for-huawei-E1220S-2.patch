@@ -1,0 +1,31 @@
+From e80245db071124a260c750133aeaabc2ba0b50c0 Mon Sep 17 00:00:00 2001
+From: "Zheng,Lei" <realthunder.dev@gmail.com>
+Date: Fri, 5 Dec 2014 11:09:35 -0800
+Subject: [PATCH] Added usb modeswitch data for huawei E1220S-2
+
+---
+ softwinner/common/rild/usb_modeswitch.d/12d1_157c |   12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+ create mode 100755 softwinner/common/rild/usb_modeswitch.d/12d1_157c
+
+diff --git a/softwinner/common/rild/usb_modeswitch.d/12d1_157c b/softwinner/common/rild/usb_modeswitch.d/12d1_157c
+new file mode 100755
+index 0000000..c5ccee9
+--- /dev/null
++++ b/softwinner/common/rild/usb_modeswitch.d/12d1_157c
+@@ -0,0 +1,12 @@
++########################################################
++# Huawei, newer modems
++
++DefaultVendor= 0x12d1
++DefaultProduct=0x157c
++
++TargetVendor=  0x12d1
++TargetProductList="1506"
++
++CheckSuccess=20
++
++MessageContent="55534243123456780000000000000011060000000000000000000000000000"
+-- 
+1.7.9.5
+
